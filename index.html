@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>オオカミジャンプ</title>
+<style>
+*{
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+}
+html,body{
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    font-family:sans-serif;
+    background:#87ceeb;
+    touch-action:none;
+}
+.screen{
+    width:100%;
+    height:100%;
+    display:none;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+    text-align:center;
+}
+.active{
+    display:flex;
+}
+h1{
+    margin:10px 0;
+    color:#222;
+}
+p{
+    line-height:1.6;
+}
+button{
+    min-width:220px;
+    min-height:60px;
+    border:none;
+    border-radius:15px;
+    font-size:22px;
+    font-weight:bold;
+    background:#ff9800;
+    color:white;
+    margin-top:15px;
+}
+#gameScreen{
+    justify-content:flex-start;
+    padding:0;
+}
+#hud{
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    gap:8px;
+    padding:10px;
+    font-size:18px;
+    font-weight:bold;
+    background:#ffffffcc;
+}
+#hpArea{
+    width:100%;
+}
+#hpBarBg{
+    width:100%;
+    height:20px;
+    background:#ddd;
+    border-radius:20px;
+    overflow:hidden;
+}
+#hpBar{
+    width:100%;
+    height:100%;
+    background:linear-gradient(90deg,#4caf50,#8bc34a);
+    transition:0.2s;
+}
+#gameArea{
+    position:relative;
+    width:100%;
+    flex:1;
+    overflow:hidden;
+    background:
+        linear-gradient(#87ceeb 0%, #87ceeb 75%, #5cb85c 75%, #4caf50 100%);
+}
+#wolf{
+    position:absolute;
+    left:50px;
+    bottom:90px;
+    font-size:60px;
+    user-select:none;
+}
+.obstacle{
+    position:absolute;
+    bottom:75px;
+    font-size:42px;
+}
+#jumpBtn{
+    width:100%;
+    height:90px;
+    font-size:30px;
+    font-weight:bold;
+    border-radius:0;
+    margin:0;
+    background:#2196f3;
+}
+.rank{
+    font-size:40px;
+    font-weight:bold;
+    color:#e91e63;
+}
+.damage{
+    animation:flash .25s;
+}
+@keyframes flash{
+    0%{filter:brightness(1);}
+    50%{filter:brightness(2);}
+    100%{filter:brightness(1);}
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen active">
+    <h1>🐺 オオカミジャンプ</h1>
+    <p>
+        オオカミをジャンプさせて岩をよけよう！<br><br>
+        岩に当たると体力が減るよ。<br>
+        体力が0になるか30秒終了でゲーム終了！<br><br>
+        画面タップまたはボタンでジャンプ！
+    </p>
+    <button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+    <div id="hud">
+        <div>スコア: <span id="score">0</span></div>
+        <div>残り: <span id="time">30</span>秒</div>
+
+        <div id="hpArea">
+            ❤️ 体力
+            <div id="hpBarBg">
+                <div id="hpBar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameArea">
+        <div id="wolf">🐺</div>
+    </div>
+
+    <button id="jumpBtn">ジャンプ</button>
+</div>
+
+<div id="resultScreen" class="screen">
+    <h1>結果発表</h1>
+    <h2>最終スコア</h2>
+    <div id="finalScore" style="font-size:50px;font-weight:bold;">0</div>
+    <div id="rank" class="rank">C</div>
+    <button id="retryBtn">もう一度遊ぶ</button>
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const startBtn=document.getElementById("startBtn");
+const retryBtn=document.getElementById("retryBtn");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+const hpBar=document.getElementById("hpBar");
+
+const gameArea=document.getElementById("gameArea");
+const wolf=document.getElementById("wolf");
+const jumpBtn=document.getElementById("jumpBtn");
+
+let score=0;
+let timeLeft=30;
+let hp=100;
+
+let wolfY=0;
+let velocity=0;
+let jumping=false;
+let gameRunning=false;
+
+let animationId;
+let obstacleTimer;
+let countdownTimer;
+
+const gravity=0.9;
+const jumpPower=16;
+
+function showScreen(screen){
+    startScreen.classList.remove("active");
+    gameScreen.classList.remove("active");
+    resultScreen.classList.remove("active");
+    screen.classList.add("active");
+}
+
+function updateHP(){
+    hp=Math.max(0,hp);
+    hpBar.style.width=hp+"%";
+
+    if(hp>60){
+        hpBar.style.background="linear-gradient(90deg,#4caf50,#8bc34a)";
+    }else if(hp>30){
+        hpBar.style.background="linear-gradient(90deg,#ff9800,#ffc107)";
+    }else{
+        hpBar.style.background="linear-gradient(90deg,#f44336,#ff5252)";
+    }
+}
+
+function jump(){
+    if(!gameRunning) return;
+
+    if(!jumping){
+        velocity=jumpPower;
+        jumping=true;
+    }
+}
+
+function damageWolf(){
+    hp-=25;
+    updateHP();
+
+    wolf.classList.add("damage");
+    setTimeout(()=>{
+        wolf.classList.remove("damage");
+    },250);
+
+    if(hp<=0){
+        endGame();
+    }
+}
+
+function createObstacle(){
+    const obs=document.createElement("div");
+    obs.className="obstacle";
+    obs.textContent="🪨";
+    obs.dataset.hit="0";
+
+    let x=gameArea.clientWidth+20;
+    obs.style.left=x+"px";
+
+    gameArea.appendChild(obs);
+
+    const move=setInterval(()=>{
+
+        if(!gameRunning){
+            clearInterval(move);
+            obs.remove();
+            return;
+        }
+
+        x-=6;
+        obs.style.left=x+"px";
+
+        const wolfRect=wolf.getBoundingClientRect();
+        const obsRect=obs.getBoundingClientRect();
+
+        if(
+            obs.dataset.hit==="0" &&
+            wolfRect.left < obsRect.right &&
+            wolfRect.right > obsRect.left &&
+            wolfRect.top < obsRect.bottom &&
+            wolfRect.bottom > obsRect.top
+        ){
+            obs.dataset.hit="1";
+            damageWolf();
+        }
+
+        if(x<-60){
+            if(obs.dataset.hit==="0"){
+                score++;
+                scoreEl.textContent=score;
+            }
+            clearInterval(move);
+            obs.remove();
+        }
+
+    },20);
+}
+
+function gameLoop(){
+
+    velocity-=gravity;
+    wolfY+=velocity;
+
+    if(wolfY<=0){
+        wolfY=0;
+        velocity=0;
+        jumping=false;
+    }
+
+    wolf.style.bottom=(90+wolfY)+"px";
+
+    animationId=requestAnimationFrame(gameLoop);
+}
+
+function startGame(){
+
+    score=0;
+    hp=100;
+    timeLeft=30;
+    wolfY=0;
+    velocity=0;
+    jumping=false;
+
+    updateHP();
+
+    scoreEl.textContent=0;
+    timeEl.textContent=30;
+
+    gameRunning=true;
+
+    document.querySelectorAll(".obstacle").forEach(o=>o.remove());
+
+    showScreen(gameScreen);
+
+    gameLoop();
+
+    obstacleTimer=setInterval(()=>{
+        createObstacle();
+    },1400);
+
+    countdownTimer=setInterval(()=>{
+        timeLeft--;
+        timeEl.textContent=timeLeft;
+
+        if(timeLeft<=0){
+            endGame(true);
+        }
+    },1000);
+}
+
+function endGame(){
+
+    if(!gameRunning) return;
+
+    gameRunning=false;
+
+    cancelAnimationFrame(animationId);
+    clearInterval(obstacleTimer);
+    clearInterval(countdownTimer);
+
+    finalScoreEl.textContent=score;
+
+    let rank="C";
+
+    if(score>=25){
+        rank="S";
+    }else if(score>=18){
+        rank="A";
+    }else if(score>=12){
+        rank="B";
+    }
+
+    rankEl.textContent="ランク " + rank;
+
+    showScreen(resultScreen);
+}
+
+startBtn.addEventListener("click",startGame);
+retryBtn.addEventListener("click",startGame);
+
+jumpBtn.addEventListener("pointerdown",jump);
+gameArea.addEventListener("pointerdown",jump);
+
+document.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.code==="ArrowUp"){
+        jump();
+    }
+});
+</script>
+
+</body>
+</html>
